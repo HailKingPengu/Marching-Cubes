@@ -1,0 +1,212 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel GenerateMesh
+#include "/Includes/MarchTable.compute"
+
+//#pragma exclude_renderers d3d11_9x
+//#pragma exclude_renderers d3d9
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+
+
+     struct Cube
+     {
+         int cubeState;
+         int position[3];
+         int cornerPositions[24];
+     };
+
+     struct Triangle
+     {
+         float3 point1;
+         float3 point2;
+         float3 point3;
+     };
+
+     static const int cornersFromEdge[][2] = 
+     {
+         {0, 1}, { 1 ,2 }, { 2 ,3 }, { 3 ,0 },
+         { 4 ,5 }, { 5 ,6 }, { 6 ,7 }, { 7 ,4 },
+         { 0 ,4 }, { 1 ,5 }, { 2 ,6 }, { 3 ,7 },
+     };
+
+     //int3 posFromCorner(int pos, Cube currentCube) {
+
+     //    int3 pos1A;
+     //    pos1A.x = currentCube.cornerPositions[point1A * 3 + 0];
+     //    pos1A.y = currentCube.cornerPositions[point1A * 3 + 1];
+     //    pos1A.z = currentCube.cornerPositions[point1A * 3 + 2];
+
+
+     //}
+
+     //float3 getVertex(int pointA, int pointB) {
+
+
+     //}
+
+
+RWStructuredBuffer<float> inputMap;
+AppendStructuredBuffer<Triangle> triangles;
+
+float surface = 0.5f;
+
+uint width;
+uint height;
+uint length;
+
+
+
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,8)]
+void GenerateMesh (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < 0 || id.x >= width || id.y < 0 || id.y >= height || id.z < 0 || id.z >= length) { return; }
+
+    Cube currentCube;
+
+    //[loop]
+
+    int x = id.x;
+    int y = id.y;
+    int z = id.z;
+
+                //cubes[x - 1, y - 1, z - 1] = Cube();
+
+    currentCube.cornerPositions[0] = x - 1;
+    currentCube.cornerPositions[1] = y - 1;
+    currentCube.cornerPositions[2] = z - 1;
+    currentCube.cornerPositions[3] = x - 1;
+    currentCube.cornerPositions[4] = y - 1;
+    currentCube.cornerPositions[5] = z;
+    currentCube.cornerPositions[6] = x;
+    currentCube.cornerPositions[7] = y - 1;
+    currentCube.cornerPositions[8] = z;
+    currentCube.cornerPositions[9] = x;
+    currentCube.cornerPositions[10] = y - 1;
+    currentCube.cornerPositions[11] = z - 1;
+    currentCube.cornerPositions[12] = x - 1;
+    currentCube.cornerPositions[13] = y;
+    currentCube.cornerPositions[14] = z - 1;
+    currentCube.cornerPositions[15] = x - 1;
+    currentCube.cornerPositions[16] = y;
+    currentCube.cornerPositions[17] = z;
+    currentCube.cornerPositions[18] = x;
+    currentCube.cornerPositions[19] = y;
+    currentCube.cornerPositions[20] = z;
+    currentCube.cornerPositions[21] = x;
+    currentCube.cornerPositions[22] = y;
+    currentCube.cornerPositions[23] = z - 1;
+
+
+    int cubeState = 0;
+
+    int pos[24] = currentCube.cornerPositions;
+
+
+    for (int i = 0; i < 8; i++)
+    {
+        if (inputMap[pos[i * 3 + 0] + pos[i * 3 + 1] * width + pos[i * 3 + 2] * width * height] < surface)
+        {
+            cubeState |= 1 << i;
+
+            //debugBuffer[0]++;
+        }
+    }
+
+    //coordinate conversion into indexed value: [x + y * w + z * w * h]
+
+    int currentID = x + y * width + z * width * height;
+
+    currentCube.cubeState = cubeState;
+
+    int triangulation[16];
+
+    for (int j = 0; j < 16; j++)
+    {
+        triangulation[j] = triTable[cubeState * 16 + j];
+    }
+
+
+
+
+
+    //[loop]
+    for (int i = 0; i < 15; i += 3)
+    {
+
+        //int currentI = 0;
+
+        Triangle tri;
+
+
+        if (triangulation[i] >= 0)
+        {
+            int point1A = cornersFromEdge[triangulation[i]][0];
+            int point1B = cornersFromEdge[triangulation[i]][1];
+
+            int point2A = cornersFromEdge[triangulation[i + 1]][0];
+            int point2B = cornersFromEdge[triangulation[i + 1]][1];
+
+            int point3A = cornersFromEdge[triangulation[i + 2]][0];
+            int point3B = cornersFromEdge[triangulation[i + 2]][1];
+
+            //vert1
+            int3 pos1A = int3(currentCube.cornerPositions[point1A * 3 + 0], currentCube.cornerPositions[point1A * 3 + 1], currentCube.cornerPositions[point1A * 3 + 2]);
+            int3 pos1B = int3(currentCube.cornerPositions[point1B * 3 + 0], currentCube.cornerPositions[point1B * 3 + 1], currentCube.cornerPositions[point1B * 3 + 2]);
+
+            float val1A = inputMap[pos1A.x + pos1A.y * width + pos1A.z * width * height];
+            float val1B = inputMap[pos1B.x + pos1B.y * width + pos1B.z * width * height];
+
+            float3 vertexPosInterpolated1 = pos1A + ((pos1B - pos1A) * ((surface - val1A) / (val1B - val1A)));
+
+            //vert2
+            int3 pos2A = int3(currentCube.cornerPositions[point2A * 3 + 0], currentCube.cornerPositions[point2A * 3 + 1], currentCube.cornerPositions[point2A * 3 + 2]);
+            int3 pos2B = int3(currentCube.cornerPositions[point2B * 3 + 0], currentCube.cornerPositions[point2B * 3 + 1], currentCube.cornerPositions[point2B * 3 + 2]);
+
+            float val2A = inputMap[pos2A.x + pos2A.y * width + pos2A.z * width * height];
+            float val2B = inputMap[pos2B.x + pos2B.y * width + pos2B.z * width * height];
+
+            float3 vertexPosInterpolated2 = pos2A + ((pos2B - pos2A) * ((surface - val2A) / (val2B - val2A)));
+
+            //vert3
+            int3 pos3A = int3(currentCube.cornerPositions[point3A * 3 + 0], currentCube.cornerPositions[point3A * 3 + 1], currentCube.cornerPositions[point3A * 3 + 2]);
+            int3 pos3B = int3(currentCube.cornerPositions[point3B * 3 + 0], currentCube.cornerPositions[point3B * 3 + 1], currentCube.cornerPositions[point3B * 3 + 2]);
+
+            float val3A = inputMap[pos3A.x + pos3A.y * width + pos3A.z * width * height];
+            float val3B = inputMap[pos3B.x + pos3B.y * width + pos3B.z * width * height];
+
+            float3 vertexPosInterpolated3 = pos3A + ((pos3B - pos3A) * ((surface - val3A) / (val3B - val3A)));
+
+
+            //tri.point1 = vertexPosInterpolated1;
+
+            tri.point1 = vertexPosInterpolated1;
+
+            tri.point2 = vertexPosInterpolated2;
+
+            tri.point3 = vertexPosInterpolated3;
+
+            //tri.point1 = vertexPosInterpolated1;
+
+            //tri.point2 = vertexPosInterpolated2;
+
+            //tri.point3 = vertexPosInterpolated3;
+
+            triangles.Append(tri);
+            
+        }
+    }
+
+
+
+    //Triangle tri;
+    //tri.point1 = float3(currentCube.cubeState, 0, 1);
+    //tri.point2 = float3(0, 1, 0);
+    //tri.point3 = float3(1, 0, 0);
+
+    //triangles.Append(tri);
+
+    //Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}
